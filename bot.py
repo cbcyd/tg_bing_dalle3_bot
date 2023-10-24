@@ -7,12 +7,11 @@ import configparser
 from modules.sql import add_message, read_thread
 from modules.utils import *
 
-
+# Read telegram bot token from config.ini
 config = configparser.ConfigParser()                                     
 config.read('config.ini')
 
 token = config.get('TELEGRAM', 'BOT_TOKEN')
-cookie = config.get('BING', 'COOKIE')
 
 # Initialize bot and dispatcher
 bot = Bot(token=token)
