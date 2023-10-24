@@ -1,0 +1,5 @@
+aiogram
+dalle3
+g4f
+sqlalchemy
+configparser
