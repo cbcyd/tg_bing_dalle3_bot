@@ -38,6 +38,17 @@ def to_html(text: str) -> str:
     text = pre_re.sub(r"<pre>\1</pre>", text)
     text = code_re.sub(r"<code>\1</code>", text)
     text = re.sub(pattern, replacement, text)
+
+    # Extract all the links and their indices
+    links = re.findall(r'\[(\d+)\]: (.*?) ""', text)
+    link_dict = {index: link for index, link in links}
+
+    # Replace all [^n^][n] with <a href="link">n</a>
+    text = re.sub(r'\[\^(\d+)\^\]\[\1\]', lambda match: f'<a href="{link_dict[match.group(1)]}">[{match.group(1)}]</a>', text)
+
+    # Remove the link definitions
+    text = re.sub(r'\[\d+\]: .*? ""', '', text).strip()
+
     return text
 
 # Function responds with images in Telegram bot
