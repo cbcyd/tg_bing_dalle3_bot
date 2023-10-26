@@ -15,7 +15,7 @@ config.read('config.ini')
 cookie = config.get('BING', 'COOKIE')
 
 # Configure logging
-logging.basicConfig(level=logging.NOTSET)
+logging.basicConfig(level=logging.INFO)
 
 # Create Dalle instance
 dalle = Dalle(cookie)

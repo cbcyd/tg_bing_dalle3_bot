@@ -94,7 +94,12 @@ async def maindef(message: types.Message):
 
     else:
         # Update message with the generated message
-        await reply.edit_text(generated_message, parse_mode='HTML')
+        if len(generated_message) > 4096:
+            await reply.delete()
+            for x in range(0, len(generated_message), 4096):
+                await message.answer(generated_message[x:x+4096], reply_to_message_id=message.message_id, parse_mode='HTML')
+        else:
+            await reply.edit_text(generated_message, parse_mode='HTML')
 
     # Add the message to the database with the role 'assistant'
     add_message(thread_id=thread_id, role='assistant', content=generated_message)
