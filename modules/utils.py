@@ -15,7 +15,7 @@ config.read('config.ini')
 cookie = config.get('BING', 'COOKIE')
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.NOTSET)
 
 # Create Dalle instance
 dalle = Dalle(cookie)
@@ -34,20 +34,25 @@ def bytes_to_data(data):
 
 # Function to convert string to HTML text
 def to_html(text: str) -> str:
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    text = pre_re.sub(r"<pre>\1</pre>", text)
-    text = code_re.sub(r"<code>\1</code>", text)
-    text = re.sub(pattern, replacement, text)
 
     # Extract all the links and their indices
     links = re.findall(r'\[(\d+)\]: (.*?) ""', text)
     link_dict = {index: link for index, link in links}
 
-    # Replace all [^n^][n] with <a href="link">n</a>
-    text = re.sub(r'\[\^(\d+)\^\]\[\1\]', lambda match: f'<a href="{link_dict[match.group(1)]}">[{match.group(1)}]</a>', text)
-
     # Remove the link definitions
+    #text = re.sub(r'\[\d+\]: .*? ""', '', text).strip()
     text = re.sub(r'\[\d+\]: .*? ""', '', text).strip()
+
+    # Remove all [^n^]
+    text = re.sub(r'\[\^(\d+)\^\]', '', text)
+
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = pre_re.sub(r"<pre>\1</pre>", text)
+    text = code_re.sub(r"<code>\1</code>", text)
+    text = re.sub(pattern, replacement, text)
+
+    # Replace all [n] with <a href="link">[n]</a>
+    text = re.sub(r'\[(\d+)\]', lambda match: f'<a href="{link_dict[match.group(1)]}">[{match.group(1)}]</a>', text)
 
     return text
 
@@ -59,7 +64,7 @@ async def reply_with_images(bot, incoming_msg: types.Message, urls):
     await bot.send_media_group(chat_id=incoming_msg.chat.id, media=media.build(), reply_to_message_id=incoming_msg.message_id)
 
 # Function prompts to generate image using Dalle
-async def generate_image(prompt):
+def generate_image(prompt):
     dalle.create(prompt)
     urls = dalle.get_urls()
     print(f'Generated: {prompt}')
@@ -80,16 +85,12 @@ async def download_image(bot, message):
 
 # Function generates message using Bing
 async def generate_message(messages, image):
-    response = g4f.ChatCompletion.create(
+    response = await g4f.ChatCompletion.create_async(
         model=g4f.models.default,
         messages=messages,
         provider=g4f.Provider.Bing,
-        stream=True,
+        #stream=True,
         image = image
     )
-    message = ''
-    for i in response:
-        message = message + i
-        print(i, flush=True, end='')
-    message = to_html(message)
+    message = to_html(response)
     return message
