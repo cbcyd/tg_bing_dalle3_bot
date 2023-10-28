@@ -57,11 +57,15 @@ def to_html(text: str) -> str:
     return text
 
 # Function responds with images in Telegram bot
-async def reply_with_images(bot, incoming_msg: types.Message, urls):
+async def reply_with_images(bot, message: types.Message, urls):
     media = MediaGroupBuilder()
-    for url in urls:
-        media.add_photo(media=url, caption=url)
-    await bot.send_media_group(chat_id=incoming_msg.chat.id, media=media.build(), reply_to_message_id=incoming_msg.message_id)
+
+    if urls:
+        for url in urls:
+            media.add_photo(media=url, caption=url)
+        await bot.send_media_group(chat_id=message.chat.id, media=media.build(), reply_to_message_id=message.message_id)
+    else:
+        await message.answer('Error, the request was probably blocked.', reply_to_message_id=message.message_id)
 
 # Function prompts to generate image using Dalle
 def generate_image(prompt):
