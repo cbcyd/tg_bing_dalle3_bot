@@ -3,6 +3,11 @@ import base64
 import logging
 import time
 import configparser
+import markdown
+import html
+from bleach import clean
+from bs4 import BeautifulSoup, NavigableString
+
 
 from aiogram import types
 from aiogram.utils.media_group import MediaGroupBuilder
@@ -20,59 +25,114 @@ logging.basicConfig(level=logging.INFO)
 # Create Dalle instance
 dalle = Dalle(cookie)
 
-# Regex for code and hyperlink replacement
-code_re = re.compile(r"^`(.+?)`$", re.MULTILINE)
-pre_re = re.compile(r"^```(.+?)```$", re.MULTILINE | re.DOTALL)
-pattern = r'\[(.*?)\]\((.*?)\)'
-replacement = r'<a href="\2">\1</a>'
-
 # Function for conversion of byte data to base64
 def bytes_to_data(data):
     data = data.read()
     data64 = u''.join(map(chr, base64.b64encode(data)))
     return u'data:image/png;base64,%s' % (data64)
 
-# Function to convert string to HTML text
-def to_html(text: str) -> str:
+def split_text(text, max_length=4096):
+    soup = BeautifulSoup(text, 'html.parser')
 
-    # Extract all the links and their indices
-    links = re.findall(r'\[(\d+)\]: (.*?) ""', text)
-    link_dict = {index: link for index, link in links}
+    blocks = []
+    current_block = ''
 
-    # Remove the link definitions
-    #text = re.sub(r'\[\d+\]: .*? ""', '', text).strip()
-    text = re.sub(r'\[\d+\]: .*? ""', '', text).strip()
+    for element in soup:
+        #print(element)
+        #print('#############s')
+        if isinstance(element, NavigableString):
+            # This is a non-<code> block
+            element = str(element)
+            while len(element) > 0:
+                if len(current_block) + len(element) <= max_length:
+                    # The entire element can fit in the current block
+                    current_block += element
+                    element = ''
+                else:
+                    # Only part of the element can fit in the current block
+                    space_left = max_length - len(current_block)
+                    current_block += element[:space_left]
+                    blocks.append(current_block)
+                    current_block = ''
+                    element = element[space_left:]
+        else:
+            # This is a <code> block
+            if len(current_block) > 0:
+                # Finish the current block
+                blocks.append(current_block)
+                current_block = ''
+            code = str(element)
+            if len(code) > max_length:
+                #print(code)
+                splitted_text = []
+                while len(code) > max_length:
+                    batch = code[:max_length]
+                    i = max_length - batch[::-1].index('\n')
+                    if code[:i].startswith('<code>'):
+                        splitted_text.append(f'{code[:i]}</code>')
+                    elif code[:i].endswith('</code>'):
+                        splitted_text.append(f'<code>{code[:i]}')
+                    else:
+                        splitted_text.append(f'<code>{code[:i]}</code>')
+                    code = code[i:]
+                if len(code):                    
+                    if code[:i].startswith('<code>'):
+                        splitted_text.append(f'{code[:i]}</code>')
+                    elif code[:i].endswith('</code>'):
+                        splitted_text.append(f'<code>{code[:i]}')
+                    else:
+                        splitted_text.append(f'<code>{code[:i]}</code>')
+                blocks.extend(splitted_text)
+                continue
+                #raise ValueError('A <code> block is longer than the maximum block length')
+            blocks.append(code)
 
-    # Remove all [^n^]
-    text = re.sub(r'\[\^(\d+)\^\]', '', text)
+    if len(current_block) > 0:
+        # Finish the last block
+        blocks.append(current_block)
 
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    text = pre_re.sub(r"<pre>\1</pre>", text)
-    text = code_re.sub(r"<code>\1</code>", text)
-    text = re.sub(pattern, replacement, text)
+    messages = ['']
+    for block in blocks:
+        if len(messages[-1])+len(block) < max_length:
+            messages[-1] += block
+        else: messages.append(block)
 
-    # Replace all [n] with <a href="link">[n]</a>
-    text = re.sub(r'\[(\d+)\]', lambda match: f'<a href="{link_dict[match.group(1)]}">[{match.group(1)}]</a>', text)
+    return messages
 
+def convert_markdown_to_telegram_html(markdown_text):
+    html_text = markdown.markdown(markdown_text)
+    allowed = ['i', 'b', 'u', 's', 'pre', 'code', 'a', 'span']
+    html_text = clean(html_text, tags=allowed, strip=True, strip_comments=True)
+    text = ''
+    b = True
+    for i in html_text.split("\n"):
+        if "```" in i:
+            text += "<code>\n" if b else "</code>\n"
+            b = not b
+        else: text = text + i + '\n'
     return text
 
 # Function responds with images in Telegram bot
 async def reply_with_images(bot, message: types.Message, urls):
     media = MediaGroupBuilder()
-
+    #print(urls)
     if urls:
         for url in urls:
             media.add_photo(media=url, caption=url)
         await bot.send_media_group(chat_id=message.chat.id, media=media.build(), reply_to_message_id=message.message_id)
     else:
+        print('URLS:', urls)
         await message.answer('Error, the request was probably blocked.', reply_to_message_id=message.message_id)
 
 # Function prompts to generate image using Dalle
 def generate_image(prompt):
-    dalle.create(prompt)
-    urls = dalle.get_urls()
-    print(f'Generated: {prompt}')
-    return urls
+    try:
+        dalle.create(prompt)
+        urls = dalle.get_urls()
+        print(f'Generated: {prompt}')
+        return urls
+    except:
+        return False
 
 # Function downloads and formats image accordingly
 async def download_image(bot, message):
@@ -96,5 +156,7 @@ async def generate_message(messages, image):
         #stream=True,
         image = image
     )
-    message = to_html(response)
+    #print(response)
+    message = convert_markdown_to_telegram_html(response)
+    #print(message)
     return message

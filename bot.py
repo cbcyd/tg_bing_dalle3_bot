@@ -77,7 +77,7 @@ async def maindef(message: types.Message):
     messages = read_thread(thread_id=thread_id)
 
     # Answer to the message
-    reply = await message.answer(to_html('Generating...'), reply_to_message_id=message.message_id, parse_mode='HTML')
+    reply = await message.answer('Generating...', reply_to_message_id=message.message_id, parse_mode='HTML')
 
 
     # Generate a message using the thread and image
@@ -97,8 +97,8 @@ async def maindef(message: types.Message):
         # Update message with the generated message
         if len(generated_message) > 4096:
             await reply.delete()
-            for x in range(0, len(generated_message), 4096):
-                await message.answer(generated_message[x:x+4096], reply_to_message_id=message.message_id, parse_mode='HTML')
+            for block in split_text(generated_message):
+                await message.answer(block, reply_to_message_id=message.message_id, parse_mode='HTML')
         else:
             await reply.edit_text(generated_message, parse_mode='HTML')
 
