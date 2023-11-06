@@ -1,34 +1,38 @@
-import re
 import base64
 import logging
-import time
 import configparser
 import markdown
-import html
 from bleach import clean
 from bs4 import BeautifulSoup, NavigableString
 import io
 
-from telegram import InlineQueryResultArticle, InputTextMessageContent, Update, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
-from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, InlineQueryHandler, MessageHandler, filters
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from undetected_chromedriver import Chrome, ChromeOptions
 
-from dalle3 import Dalle
+from telegram import InputMediaPhoto
+
 import g4f
 
 import nest_asyncio
 nest_asyncio.apply()
 
+options = ChromeOptions()
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_argument("--headless")
+driver = Chrome(options=options)
+
 # Read Bing cookie from config.ini
 config = configparser.ConfigParser()                                     
 config.read('config.ini')
-cookie = config.get('BING', 'COOKIE')
+cookie_value = config.get('BING', 'COOKIE')
+
+cookie = {"name": "_U", "value": cookie_value}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Create Dalle instance
-dalle = Dalle(cookie)
 
 # Function for conversion of byte data to base64
 def bytes_to_data(data):
@@ -131,14 +135,16 @@ async def reply_with_images(message, urls, prompt):
         await message.reply_text('Error, the request was probably blocked.')
 
 # Function prompts to generate image using Dalle
-def generate_image(prompt):
+def generate_images(prompt):
+    driver.get(f"https://www.bing.com/images/create?q={prompt}")
+    driver.add_cookie(cookie)
+    driver.refresh()
     try:
-        dalle.create(prompt)
-        urls = dalle.get_urls()
-        print(f'Generated: {prompt}')
-        return urls
+        urls = list(set([element.get_attribute("src") for element in WebDriverWait(driver, 600).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "mimg")))]))
     except:
         return False
+    print(f'Generated: {prompt}')
+    return urls
 
 # Function downloads and formats image accordingly
 async def download_image(message):

@@ -73,11 +73,12 @@ async def maindef(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # If a new image URL is generated, generate a new image
         prompt = generated_message.split('https://www.bing.com/images/create?q=')[1]
         prompt = unquote(prompt)
-        urls = generate_image(prompt)
-        await reply_with_images(message, urls, prompt)
-
-        # Delete the 'Generating...' message
-        await reply.delete()
+        urls = generate_images(prompt)
+        if urls:
+            await reply_with_images(message, urls, prompt)
+            await reply.delete()
+        else:
+            reply.edit_text('Error, probably problem with your prompt')
 
     else:
         # Update message with the generated message
