@@ -7,12 +7,17 @@ import markdown
 import html
 from bleach import clean
 from bs4 import BeautifulSoup, NavigableString
+import io
 
+from telegram import InlineQueryResultArticle, InputTextMessageContent, Update, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
+from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, ContextTypes, InlineQueryHandler, MessageHandler, filters
 
-from aiogram import types
-from aiogram.utils.media_group import MediaGroupBuilder
 from dalle3 import Dalle
 import g4f
+
+import nest_asyncio
+nest_asyncio.apply()
 
 # Read Bing cookie from config.ini
 config = configparser.ConfigParser()                                     
@@ -27,6 +32,7 @@ dalle = Dalle(cookie)
 
 # Function for conversion of byte data to base64
 def bytes_to_data(data):
+    data.seek(0)
     data = data.read()
     data64 = u''.join(map(chr, base64.b64encode(data)))
     return u'data:image/png;base64,%s' % (data64)
@@ -113,16 +119,16 @@ def convert_markdown_to_telegram_html(markdown_text):
     return text
 
 # Function responds with images in Telegram bot
-async def reply_with_images(bot, message: types.Message, urls):
-    media = MediaGroupBuilder()
+async def reply_with_images(message, urls, prompt):
+    media = []
     #print(urls)
     if urls:
         for url in urls:
-            media.add_photo(media=url, caption=url)
-        await bot.send_media_group(chat_id=message.chat.id, media=media.build(), reply_to_message_id=message.message_id)
+            media.append(InputMediaPhoto(media=url))#, caption=url))
+        await message.reply_media_group(media=media, caption=prompt)
     else:
         print('URLS:', urls)
-        await message.answer('Error, the request was probably blocked.', reply_to_message_id=message.message_id)
+        await message.reply_text('Error, the request was probably blocked.')
 
 # Function prompts to generate image using Dalle
 def generate_image(prompt):
@@ -135,20 +141,26 @@ def generate_image(prompt):
         return False
 
 # Function downloads and formats image accordingly
-async def download_image(bot, message):
+async def download_image(message):
+    #print(message)
     if message.photo:
-        file_id = message.photo[-2].file_id
-        file = await bot.get_file(file_id)
-        data = await bot.download_file(file.file_path)
+        file = await message.photo[-1].get_file()
+        data = io.BytesIO()
+        #print('photo:',file)
+        #input()
+        await file.download_to_memory(data)
         image = bytes_to_data(data)
         prompt = message.caption
     else:
         image = None
         prompt = message.text
+
+    #print(image, prompt)
     return image, prompt
 
 # Function generates message using Bing
 async def generate_message(messages, image):
+    
     response = await g4f.ChatCompletion.create_async(
         model=g4f.models.default,
         messages=messages,
